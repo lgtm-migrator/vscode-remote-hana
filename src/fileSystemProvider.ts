@@ -8,47 +8,6 @@ import { DirectoryInformation, FileMetadata } from './types';
 
 const fetch: typeof import("node-fetch").default = require('fetch-cookie')(require('node-fetch'));
 
-export class File implements vscode.FileStat {
-
-    type: vscode.FileType;
-    ctime: number;
-    mtime: number;
-    size: number;
-
-    name: string;
-    data?: Uint8Array;
-
-    constructor(name: string) {
-        this.type = vscode.FileType.File;
-        this.ctime = Date.now();
-        this.mtime = Date.now();
-        this.size = 0;
-        this.name = name;
-    }
-}
-
-export class Directory implements vscode.FileStat {
-
-    type: vscode.FileType;
-    ctime: number;
-    mtime: number;
-    size: number;
-
-    name: string;
-    entries: Map<string, File | Directory>;
-
-    constructor(name: string) {
-        this.type = vscode.FileType.Directory;
-        this.ctime = Date.now();
-        this.mtime = Date.now();
-        this.size = 0;
-        this.name = name;
-        this.entries = new Map();
-    }
-}
-
-export type Entry = File | Directory;
-
 interface Credential {
     username: string;
     password: string;
@@ -61,7 +20,6 @@ interface Credentials {
 
 export class FileSystem implements vscode.FileSystemProvider {
 
-    root = new Directory('');
 
     // --- manage file metadata
 
@@ -85,63 +43,123 @@ export class FileSystem implements vscode.FileSystemProvider {
     }
 
     async writeFile(
-        uri: vscode.Uri,
-        content: Uint8Array,
+        uri: vscode.Uri, content: Uint8Array,
         options: { create: boolean, overwrite: boolean }
     ): Promise<void> {
-        let basename = path.posix.basename(uri.path);
-        let parent = this._lookupParentDirectory(uri);
-        let entry = parent.entries.get(basename);
-        if (entry instanceof Directory) {
-            throw vscode.FileSystemError.FileIsADirectory(uri);
-        }
-        if (!entry && !options.create) {
-            throw vscode.FileSystemError.FileNotFound(uri);
-        }
-        if (entry && options.create && !options.overwrite) {
-            throw vscode.FileSystemError.FileExists(uri);
-        }
-        if (!entry) {
-            entry = new File(basename);
-            parent.entries.set(basename, entry);
-            this._fireSoon({ type: vscode.FileChangeType.Created, uri });
-        }
-        entry.mtime = Date.now();
-        entry.size = content.byteLength;
-        entry.data = content;
 
-        this._fireSoon({ type: vscode.FileChangeType.Changed, uri });
+        const { hostname, pathname } = this._parseUri(uri);
+
+        let headers: any = await this._getHeaders(uri)
+
+        let body: any
+
+        const fileName = path.basename(pathname)
+
+        switch (path.extname(fileName)) {
+            case ".js":
+            case ".xsjs":
+            case ".css":
+            case ".html":
+            case "": // start with .
+                headers["content-type"] = "text/javascriptcharset=UTF-8"
+                body = Buffer.from(content).toString("UTF-8")
+                break;
+            default:
+
+
+                break;
+        }
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`, {
+            method: "PUT", // for put method, if file not exist, hana will create it.
+            headers: headers,
+            body: body
+        });
+
+        await this._processError(response)
+
     }
 
     // --- manage files/folders
 
+    // rename or move
     async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+        const { hostname, pathname } = this._parseUri(oldUri);
 
+        const headers: any = await this._getHeaders(oldUri)
+        const oldBasePath = path.dirname(pathname)
+        const newPath = await this._parseUri(newUri).pathname
+        const newFilename = path.basename(newPath)
+
+        // if path not equal, need workaround to move file
+
+        headers["Content-Type"] = "application/json;charset=UTF-8"
+
+        headers["X-Create-Options"] = "move,no-overwrite"
+
+        const payload = {
+            Location: `/sap/hana/xs/dt/base/file${pathname}`,
+            Target: newFilename
+        }
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file${oldBasePath}/`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload)
+        });
+
+        await this._processError(response)
 
     }
 
     async delete(uri: vscode.Uri): Promise<void> {
+        const { hostname, pathname } = this._parseUri(uri);
 
+        let headers: any = await this._getHeaders(uri)
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`, {
+            method: "DELETE",
+            headers,
+        });
+
+        await this._processError(response)
     }
 
     async createDirectory(uri: vscode.Uri): Promise<void> {
+
+
+        const { hostname, pathname } = this._parseUri(uri);
+        const base = path.dirname(pathname)
+        const directoryName = path.basename(pathname)
+
+        const payload = {
+            Name: directoryName,
+            Directory: true
+        }
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${base}`, {
+            method: "POST",
+            headers: await this._getHeaders(uri),
+            body: JSON.stringify(payload)
+        });
+
+        await this._processError(response)
 
     }
 
     private credentials: Credentials = {};
 
-    private async _findCredential(hostname: string): Promise<Credential> {
+    private async _findCredential(uri: vscode.Uri): Promise<Credential> {
+        const { hostname, username, password } = this._parseUri(uri)
+
         if (this.credentials[hostname]) {
             return this.credentials[hostname];
         } else {
-            const user = await vscode.window.showInputBox({ prompt: `Username for ${hostname}: ` });
-            const password = await vscode.window.showInputBox({ prompt: `Password for ${hostname}: ` });
 
-            if (user && password) {
-                const credential: Credential = { username: user, password: password };
+            if (username && password) {
+                const credential: Credential = { username: username, password: password };
                 this.credentials[hostname] = credential;
                 return credential;
-
             } else {
                 throw vscode.FileSystemError.Unavailable("You must provide credential");
             }
@@ -158,17 +176,26 @@ export class FileSystem implements vscode.FileSystemProvider {
             const body = await response.text();
             throw vscode.FileSystemError.Unavailable(body);
         } else if (response.status >= 400) {
-            // if require csrf token
-            const body = await response.text();
-            throw vscode.FileSystemError.NoPermissions(body);
+
+            switch (response.status) {
+                case 404:
+                    throw vscode.FileSystemError.FileNotFound()
+                default:
+                    // if require csrf token
+                    const body = await response.text();
+                    throw vscode.FileSystemError.NoPermissions(body);
+            }
+
         } else {
             // do nothing
         }
     }
 
-    private async _getCsrfToken(hostname: string, force: boolean = false) {
+    private async _getCsrfToken(uri: vscode.Uri, force: boolean = false) {
 
-        const credential = await this._findCredential(hostname);
+        const { hostname } = this._parseUri(uri)
+
+        const credential = await this._findCredential(uri);
 
         if (force || !credential._csrfToken || credential._csrfToken === "unsafe") {
 
@@ -176,7 +203,7 @@ export class FileSystem implements vscode.FileSystemProvider {
                 { headers: { "x-csrf-token": "fetch" } }
             );
 
-            this._processError(response);
+            await this._processError(response);
 
             credential._csrfToken = response.headers.get("x-csrf-token") || "";
 
@@ -186,17 +213,17 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     }
 
-    private async _getHeaders(hostname: string) {
-        const credential = await this._findCredential(hostname);
-        const csrfToken = await this._getCsrfToken(hostname);
+    private async _getHeaders(uri: vscode.Uri) {
+        const credential = await this._findCredential(uri);
+        const csrfToken = await this._getCsrfToken(uri);
 
         return {
-            "Authorization": `Baisc ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`,
+            "Authorization": `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`,
             "x-csrf-token": csrfToken
         };
     }
 
-    private _parseUri(uri: vscode.Uri): { hostname: string, pathname: string } {
+    private _parseUri(uri: vscode.Uri): URL {
         return new URL(uri.toString());
     }
 
@@ -204,10 +231,11 @@ export class FileSystem implements vscode.FileSystemProvider {
         const { hostname, pathname } = this._parseUri(uri);
 
         const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?parts=meta`, {
-            headers: await this._getHeaders(hostname)
+            headers: await this._getHeaders(uri)
         });
 
-        this._processError(response);
+
+        await this._processError(response);
 
         const body: DirectoryInformation | FileMetadata = await response.json();
 
@@ -223,20 +251,20 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     }
 
+
     private async _readFileContent(uri: vscode.Uri): Promise<Uint8Array> {
 
         const { hostname, pathname } = this._parseUri(uri);
 
         const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`, {
-            headers: await this._getHeaders(hostname)
+            headers: await this._getHeaders(uri)
         });
 
-        this._processError(response);
+        await this._processError(response);
 
-        const body = await response.text();
+        const body = await response.buffer()
 
-        return new TextEncoder().encode(body);
-
+        return body
     }
 
     private async _readDirectory(uri: vscode.Uri): Promise<DirectoryInformation> {
@@ -244,10 +272,10 @@ export class FileSystem implements vscode.FileSystemProvider {
         const { hostname, pathname } = this._parseUri(uri);
 
         const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`, {
-            headers: await this._getHeaders(hostname)
+            headers: await this._getHeaders(uri)
         });
 
-        this._processError(response);
+        await this._processError(response);
 
         const body: DirectoryInformation = await response.json();
 
@@ -255,59 +283,10 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     }
 
-    // --- lookup
-
-    private _lookup(uri: vscode.Uri, silent: false): Entry;
-    private _lookup(uri: vscode.Uri, silent: boolean): Entry | undefined;
-    private _lookup(uri: vscode.Uri, silent: boolean): Entry | undefined {
-        let parts = uri.path.split('/');
-        let entry: Entry = this.root;
-        for (const part of parts) {
-            if (!part) {
-                continue;
-            }
-            let child: Entry | undefined;
-            if (entry instanceof Directory) {
-                child = entry.entries.get(part);
-            }
-            if (!child) {
-                if (!silent) {
-                    throw vscode.FileSystemError.FileNotFound(uri);
-                } else {
-                    return undefined;
-                }
-            }
-            entry = child;
-        }
-        return entry;
-    }
-
-    private _lookupAsDirectory(uri: vscode.Uri, silent: boolean): Directory {
-        let entry = this._lookup(uri, silent);
-        if (entry instanceof Directory) {
-            return entry;
-        }
-        throw vscode.FileSystemError.FileNotADirectory(uri);
-    }
-
-    private _lookupAsFile(uri: vscode.Uri, silent: boolean): File {
-        let entry = this._lookup(uri, silent);
-        if (entry instanceof File) {
-            return entry;
-        }
-        throw vscode.FileSystemError.FileIsADirectory(uri);
-    }
-
-    private _lookupParentDirectory(uri: vscode.Uri): Directory {
-        const dirname = uri.with({ path: path.posix.dirname(uri.path) });
-        return this._lookupAsDirectory(dirname, false);
-    }
 
     // --- manage file events
 
     private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-    private _bufferedEvents: vscode.FileChangeEvent[] = [];
-    private _fireSoonHandle?: NodeJS.Timer;
 
     readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 
@@ -316,16 +295,5 @@ export class FileSystem implements vscode.FileSystemProvider {
         return new vscode.Disposable(() => { });
     }
 
-    private _fireSoon(...events: vscode.FileChangeEvent[]): void {
-        this._bufferedEvents.push(...events);
 
-        if (this._fireSoonHandle) {
-            clearTimeout(this._fireSoonHandle);
-        }
-
-        this._fireSoonHandle = setTimeout(() => {
-            this._emitter.fire(this._bufferedEvents);
-            this._bufferedEvents.length = 0;
-        }, 5);
-    }
 }
