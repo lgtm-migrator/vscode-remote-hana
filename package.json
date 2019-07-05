@@ -16,9 +16,7 @@
 	],
 	"activationEvents": [
 		"onFileSystem:hanafs",
-		"onCommand:hanafs.workspaceInit",
-		"onCommand:hanafs.init",
-		"onCommand:hanafs.reset"
+		"onCommand:hanafs.workspaceInit"
 	],
 	"main": "./out/src/extension",
 	"contributes": {
@@ -27,16 +25,6 @@
 				"command": "hanafs.workspaceInit",
 				"title": "Setup Workspace",
 				"category": "hanafs"
-			},
-			{
-				"command": "hanafs.init",
-				"title": "Create Files",
-				"category": "hanafs"
-			},
-			{
-				"command": "hanafs.reset",
-				"title": "Delete Files",
-				"category": "hanafs"
 			}
 		],
 		"menus": {
@@ -44,19 +32,12 @@
 				{
 					"command": "hanafs.init",
 					"when": "workbenchState == workspace"
-				},
-				{
-					"command": "hanafs.reset",
-					"when": "workbenchState == workspace"
-				},
-				{
-					"command": "hanafs.workspaceInit",
-					"when": "workbenchState != workspace"
 				}
 			]
 		}
 	},
 	"scripts": {
+		"build": "npm run compile && vsce package",
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -p ./",
 		"lint": "tslint -p ./",
@@ -66,7 +47,8 @@
 		"@types/node": "^7.0.43",
 		"tslint": "^5.16.0",
 		"typescript": "^3.5.1",
-		"@types/vscode": "^1.32.0"
+		"@types/vscode": "^1.32.0",
+		"vsce": "^1.64.0"
 	},
 	"dependencies": {
 		"@types/node-fetch": "^2.3.7",
