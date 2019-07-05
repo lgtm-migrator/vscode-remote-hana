@@ -1,0 +1,71 @@
+{
+	"name": "vscode-remote-hana",
+	"displayName": "Remote Hana Repository Extension",
+	"description": "Edit your hana repository in VSCode",
+	"version": "0.0.1",
+	"license": "MIT",
+	"repository": {
+		"url": "https://github.com/Soontao/vscode-remote-hana.git",
+		"type": "git"
+	},
+	"engines": {
+		"vscode": "^1.32.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onFileSystem:hanafs",
+		"onCommand:hanafs.workspaceInit",
+		"onCommand:hanafs.init",
+		"onCommand:hanafs.reset"
+	],
+	"main": "./out/src/extension",
+	"contributes": {
+		"commands": [
+			{
+				"command": "hanafs.workspaceInit",
+				"title": "Setup Workspace",
+				"category": "hanafs"
+			},
+			{
+				"command": "hanafs.init",
+				"title": "Create Files",
+				"category": "hanafs"
+			},
+			{
+				"command": "hanafs.reset",
+				"title": "Delete Files",
+				"category": "hanafs"
+			}
+		],
+		"menus": {
+			"commandPalette": [
+				{
+					"command": "hanafs.init",
+					"when": "workbenchState == workspace"
+				},
+				{
+					"command": "hanafs.reset",
+					"when": "workbenchState == workspace"
+				},
+				{
+					"command": "hanafs.workspaceInit",
+					"when": "workbenchState != workspace"
+				}
+			]
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"lint": "tslint -p ./",
+		"watch": "tsc -watch -p ./"
+	},
+	"devDependencies": {
+		"@types/node": "^7.0.43",
+		"tslint": "^5.16.0",
+		"typescript": "^3.5.1",
+		"@types/vscode": "^1.32.0"
+	}
+}
