@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { Buffer } from "buffer";
 
 import { URL } from "url";
-import { DirectoryInfomation, FileMetadata } from './types';
+import { DirectoryInformation, FileMetadata } from './types';
 
 const fetch: typeof import("node-fetch").default = require('fetch-cookie')(require('node-fetch'));
 
@@ -209,7 +209,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
         this._processError(response);
 
-        const body: DirectoryInfomation | FileMetadata = await response.json();
+        const body: DirectoryInformation | FileMetadata = await response.json();
 
         const fileType = body.Directory ? vscode.FileType.Directory : vscode.FileType.File;
 
@@ -239,7 +239,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     }
 
-    private async _readDirectory(uri: vscode.Uri): Promise<DirectoryInfomation> {
+    private async _readDirectory(uri: vscode.Uri): Promise<DirectoryInformation> {
 
         const { hostname, pathname } = this._parseUri(uri);
 
@@ -249,7 +249,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
         this._processError(response);
 
-        const body: DirectoryInfomation = await response.json();
+        const body: DirectoryInformation = await response.json();
 
         return body;
 

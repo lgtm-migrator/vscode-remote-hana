@@ -1,4 +1,4 @@
-export interface DirectoryInfomation {
+export interface DirectoryInformation {
   Name: string;
   Id: string;
   Location: string;
@@ -7,14 +7,14 @@ export interface DirectoryInfomation {
   ExportLocation: string;
   ImportLocation: string;
   Directory: boolean;
-  Attributes: DirectoryInfomationAttributes;
+  Attributes: DirectoryInformationAttributes;
   Workspaces: any[];
-  SapBackPack: DirectoryInfomationSapBackPack;
+  SapBackPack: DirectoryInformationSapBackPack;
   Parents: Parent[];
   Children: Child[];
 }
 
-export interface DirectoryInfomationAttributes {
+export interface DirectoryInformationAttributes {
   ReadOnly: boolean;
   Executable: boolean;
   Hidden: boolean;
@@ -52,7 +52,7 @@ export interface Parent {
   ExportLocation: string;
 }
 
-export interface DirectoryInfomationSapBackPack {
+export interface DirectoryInformationSapBackPack {
   SrcSystem: string;
   Responsible: string;
 }
