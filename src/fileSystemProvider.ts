@@ -1,8 +1,12 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { Buffer } from "buffer";
 
-const fetch: GlobalFetch = require('fetch-cookie')(require('node-fetch'))
+import { URL } from "url";
+import { DirectoryInfomation, FileMetadata } from './types';
+
+const fetch: typeof import("node-fetch").default = require('fetch-cookie')(require('node-fetch'));
 
 export class File implements vscode.FileStat {
 
@@ -48,10 +52,11 @@ export type Entry = File | Directory;
 interface Credential {
     username: string;
     password: string;
+    _csrfToken?: string;
 }
 
 interface Credentials {
-    [host: string]: Credential
+    [host: string]: Credential;
 }
 
 export class FileSystem implements vscode.FileSystemProvider {
@@ -61,14 +66,14 @@ export class FileSystem implements vscode.FileSystemProvider {
     // --- manage file metadata
 
     async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-        return this._lookup(uri, false);
+        return await this._readStat(uri);
     }
 
     async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-        const entry = this._lookupAsDirectory(uri, false);
+        const entry = await this._readDirectory(uri);
         let result: [string, vscode.FileType][] = [];
-        for (const [name, child] of entry.entries) {
-            result.push([name, child.type]);
+        for (const child of entry.Children) {
+            result.push([child.Name, child.Directory ? vscode.FileType.Directory : vscode.FileType.File]);
         }
         return result;
     }
@@ -76,14 +81,14 @@ export class FileSystem implements vscode.FileSystemProvider {
     // --- manage file contents
 
     async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-        const data = this._lookupAsFile(uri, false).data;
-        if (data) {
-            return data;
-        }
-        throw vscode.FileSystemError.FileNotFound();
+        return await this._readFileContent(uri);
     }
 
-    async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
+    async writeFile(
+        uri: vscode.Uri,
+        content: Uint8Array,
+        options: { create: boolean, overwrite: boolean }
+    ): Promise<void> {
         let basename = path.posix.basename(uri.path);
         let parent = this._lookupParentDirectory(uri);
         let entry = parent.entries.get(basename);
@@ -123,34 +128,130 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     }
 
-
-    // --- api
-    private csrfToken: string = ""
-
-    private credentials: Credentials = {}
+    private credentials: Credentials = {};
 
     private async _findCredential(hostname: string): Promise<Credential> {
         if (this.credentials[hostname]) {
-            return this.credentials[hostname]
+            return this.credentials[hostname];
         } else {
             const user = await vscode.window.showInputBox({ prompt: `Username for ${hostname}: ` });
             const password = await vscode.window.showInputBox({ prompt: `Password for ${hostname}: ` });
 
             if (user && password) {
-                const credential: Credential = { username: user, password: password }
-                this.credentials[hostname] = credential
-                return credential
+                const credential: Credential = { username: user, password: password };
+                this.credentials[hostname] = credential;
+                return credential;
 
             } else {
-                throw new Error(`You must provide credential.`)
+                throw vscode.FileSystemError.Unavailable("You must provide credential");
             }
         }
 
     }
 
-    private async _readUri(uri: vscode.Uri) {
+    /**
+     * throw error if response body not correctly
+     */
+    private async _processError(response: import("node-fetch").Response) {
+        if (response.status >= 500) {
 
-        uri.path
+            const body = await response.text();
+            throw vscode.FileSystemError.Unavailable(body);
+        } else if (response.status >= 400) {
+            // if require csrf token
+            const body = await response.text();
+            throw vscode.FileSystemError.NoPermissions(body);
+        } else {
+            // do nothing
+        }
+    }
+
+    private async _getCsrfToken(hostname: string, force: boolean = false) {
+
+        const credential = await this._findCredential(hostname);
+
+        if (force || !credential._csrfToken || credential._csrfToken === "unsafe") {
+
+            const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file`,
+                { headers: { "x-csrf-token": "fetch" } }
+            );
+
+            this._processError(response);
+
+            credential._csrfToken = response.headers.get("x-csrf-token") || "";
+
+        }
+
+        return credential._csrfToken;
+
+    }
+
+    private async _getHeaders(hostname: string) {
+        const credential = await this._findCredential(hostname);
+        const csrfToken = await this._getCsrfToken(hostname);
+
+        return {
+            "Authorization": `Baisc ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`,
+            "x-csrf-token": csrfToken
+        };
+    }
+
+    private _parseUri(uri: vscode.Uri): { hostname: string, pathname: string } {
+        return new URL(uri.toString());
+    }
+
+    private async _readStat(uri: vscode.Uri): Promise<vscode.FileStat> {
+        const { hostname, pathname } = this._parseUri(uri);
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?parts=meta`, {
+            headers: await this._getHeaders(hostname)
+        });
+
+        this._processError(response);
+
+        const body: DirectoryInfomation | FileMetadata = await response.json();
+
+        const fileType = body.Directory ? vscode.FileType.Directory : vscode.FileType.File;
+
+        return {
+            type: fileType,
+            size: 0,
+            mtime: 0,
+            ctime: 0,
+        };
+
+
+    }
+
+    private async _readFileContent(uri: vscode.Uri): Promise<Uint8Array> {
+
+        const { hostname, pathname } = this._parseUri(uri);
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`, {
+            headers: await this._getHeaders(hostname)
+        });
+
+        this._processError(response);
+
+        const body = await response.text();
+
+        return new TextEncoder().encode(body);
+
+    }
+
+    private async _readDirectory(uri: vscode.Uri): Promise<DirectoryInfomation> {
+
+        const { hostname, pathname } = this._parseUri(uri);
+
+        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`, {
+            headers: await this._getHeaders(hostname)
+        });
+
+        this._processError(response);
+
+        const body: DirectoryInfomation = await response.json();
+
+        return body;
 
     }
 

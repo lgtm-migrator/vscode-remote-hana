@@ -14,12 +14,12 @@ export function activate(context: vscode.ExtensionContext) {
 
         const host = await vscode.window.showInputBox({
             prompt: "Hana repository host: "
-        })
+        });
 
         // if user input host name
         if (host) {
             vscode.workspace.updateWorkspaceFolders(0, 0, {
-                uri: vscode.Uri.parse(`hanafs:/${host}`), name: host
+                uri: vscode.Uri.parse(`hanafs://${host}`), name: host
             });
         }
 

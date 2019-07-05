@@ -5,5 +5,9 @@
     "hanafs"
   ],
   "editor.formatOnSave": true,
-  "editor.wordWrap": "on"
+  "editor.wordWrap": "on",
+  "editor.fontSize": 16,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.tslint": true
+  }
 }
