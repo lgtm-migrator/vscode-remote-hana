@@ -67,5 +67,10 @@
 		"tslint": "^5.16.0",
 		"typescript": "^3.5.1",
 		"@types/vscode": "^1.32.0"
+	},
+	"dependencies": {
+		"@types/node-fetch": "^2.3.7",
+		"fetch-cookie": "^0.7.2",
+		"node-fetch": "^2.6.0"
 	}
 }

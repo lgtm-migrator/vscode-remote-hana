@@ -1,11 +1,8 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+
+const fetch: GlobalFetch = require('fetch-cookie')(require('node-fetch'))
 
 export class File implements vscode.FileStat {
 
@@ -149,6 +146,16 @@ export class FileSystem implements vscode.FileSystemProvider {
         parent.mtime = Date.now();
         parent.size += 1;
         this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
+    }
+
+
+    // --- api
+    private csrfToken: string = ""
+
+    private _readUri(uri: vscode.Uri) {
+
+        uri.path
+
     }
 
     // --- lookup
