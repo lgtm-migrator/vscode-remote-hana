@@ -1,7 +1,8 @@
 {
   "cSpell.words": [
     "csrf",
-    "hana"
+    "hana",
+    "hanafs"
   ],
   "editor.formatOnSave": true,
   "editor.wordWrap": "on"

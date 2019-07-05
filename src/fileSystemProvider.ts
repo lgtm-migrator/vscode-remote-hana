@@ -45,17 +45,26 @@ export class Directory implements vscode.FileStat {
 
 export type Entry = File | Directory;
 
+interface Credential {
+    username: string;
+    password: string;
+}
+
+interface Credentials {
+    [host: string]: Credential
+}
+
 export class FileSystem implements vscode.FileSystemProvider {
 
     root = new Directory('');
 
     // --- manage file metadata
 
-    stat(uri: vscode.Uri): vscode.FileStat {
+    async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
         return this._lookup(uri, false);
     }
 
-    readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
+    async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
         const entry = this._lookupAsDirectory(uri, false);
         let result: [string, vscode.FileType][] = [];
         for (const [name, child] of entry.entries) {
@@ -66,7 +75,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     // --- manage file contents
 
-    readFile(uri: vscode.Uri): Uint8Array {
+    async readFile(uri: vscode.Uri): Promise<Uint8Array> {
         const data = this._lookupAsFile(uri, false).data;
         if (data) {
             return data;
@@ -74,7 +83,7 @@ export class FileSystem implements vscode.FileSystemProvider {
         throw vscode.FileSystemError.FileNotFound();
     }
 
-    writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): void {
+    async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
         let basename = path.posix.basename(uri.path);
         let parent = this._lookupParentDirectory(uri);
         let entry = parent.entries.get(basename);
@@ -101,58 +110,45 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     // --- manage files/folders
 
-    rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): void {
+    async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
 
-        if (!options.overwrite && this._lookup(newUri, true)) {
-            throw vscode.FileSystemError.FileExists(newUri);
-        }
 
-        let entry = this._lookup(oldUri, false);
-        let oldParent = this._lookupParentDirectory(oldUri);
-
-        let newParent = this._lookupParentDirectory(newUri);
-        let newName = path.posix.basename(newUri.path);
-
-        oldParent.entries.delete(entry.name);
-        entry.name = newName;
-        newParent.entries.set(newName, entry);
-
-        this._fireSoon(
-            { type: vscode.FileChangeType.Deleted, uri: oldUri },
-            { type: vscode.FileChangeType.Created, uri: newUri }
-        );
     }
 
-    delete(uri: vscode.Uri): void {
-        let dirname = uri.with({ path: path.posix.dirname(uri.path) });
-        let basename = path.posix.basename(uri.path);
-        let parent = this._lookupAsDirectory(dirname, false);
-        if (!parent.entries.has(basename)) {
-            throw vscode.FileSystemError.FileNotFound(uri);
-        }
-        parent.entries.delete(basename);
-        parent.mtime = Date.now();
-        parent.size -= 1;
-        this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { uri, type: vscode.FileChangeType.Deleted });
+    async delete(uri: vscode.Uri): Promise<void> {
+
     }
 
-    createDirectory(uri: vscode.Uri): void {
-        let basename = path.posix.basename(uri.path);
-        let dirname = uri.with({ path: path.posix.dirname(uri.path) });
-        let parent = this._lookupAsDirectory(dirname, false);
+    async createDirectory(uri: vscode.Uri): Promise<void> {
 
-        let entry = new Directory(basename);
-        parent.entries.set(entry.name, entry);
-        parent.mtime = Date.now();
-        parent.size += 1;
-        this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
     }
 
 
     // --- api
     private csrfToken: string = ""
 
-    private _readUri(uri: vscode.Uri) {
+    private credentials: Credentials = {}
+
+    private async _findCredential(hostname: string): Promise<Credential> {
+        if (this.credentials[hostname]) {
+            return this.credentials[hostname]
+        } else {
+            const user = await vscode.window.showInputBox({ prompt: `Username for ${hostname}: ` });
+            const password = await vscode.window.showInputBox({ prompt: `Password for ${hostname}: ` });
+
+            if (user && password) {
+                const credential: Credential = { username: user, password: password }
+                this.credentials[hostname] = credential
+                return credential
+
+            } else {
+                throw new Error(`You must provide credential.`)
+            }
+        }
+
+    }
+
+    private async _readUri(uri: vscode.Uri) {
 
         uri.path
 
