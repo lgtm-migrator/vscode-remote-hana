@@ -9,9 +9,9 @@ Start Hana XS JS Development in VS Code
 * [x] delete file/directory
 * [ ] rename file/directory
 * [ ] move file
-* [ ] support binary files
+* [ ] binary files upload
 * [ ] document
 * [ ] activate/status monitor
-* [ ] version manager
+* [ ] version control integration
 * [ ] debug
 * [ ] xs js/ui5 code intellisense
