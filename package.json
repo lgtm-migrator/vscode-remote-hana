@@ -26,15 +26,7 @@
 				"title": "Setup Workspace",
 				"category": "hanafs"
 			}
-		],
-		"menus": {
-			"commandPalette": [
-				{
-					"command": "hanafs.init",
-					"when": "workbenchState == workspace"
-				}
-			]
-		}
+		]
 	},
 	"scripts": {
 		"build": "npm run compile && vsce package",

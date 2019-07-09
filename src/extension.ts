@@ -5,9 +5,15 @@ import { FileSystem } from './fileSystemProvider';
 
 import { URL } from "url";
 
+export function validateHanaFSUri(uri: string): boolean {
+    let rt = true;
+
+    return rt;
+}
+
 export function activate(context: vscode.ExtensionContext) {
 
-    const fs = new FileSystem()
+    const fs = new FileSystem();
 
     context.subscriptions.push(
         vscode.workspace.registerFileSystemProvider('hanafs', fs, { isCaseSensitive: true })
@@ -23,11 +29,12 @@ export function activate(context: vscode.ExtensionContext) {
         // if user input host name
         if (uri) {
 
-            const { hostname } = new URL(uri)
+            const { hostname } = new URL(uri);
 
             vscode.workspace.updateWorkspaceFolders(0, 0, {
                 uri: vscode.Uri.parse(uri), name: hostname
             });
+
         }
 
     }));

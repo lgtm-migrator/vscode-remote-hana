@@ -49,11 +49,11 @@ export class FileSystem implements vscode.FileSystemProvider {
 
         const { hostname, pathname } = this._parseUri(uri);
 
-        let headers: any = await this._getHeaders(uri)
+        let headers: any = await this._getHeaders(uri);
 
-        let body: any
+        let body: any;
 
-        const fileName = path.basename(pathname)
+        const fileName = path.basename(pathname);
 
         switch (path.extname(fileName)) {
             case ".js":
@@ -61,8 +61,8 @@ export class FileSystem implements vscode.FileSystemProvider {
             case ".css":
             case ".html":
             case "": // start with .
-                headers["content-type"] = "text/javascriptcharset=UTF-8"
-                body = Buffer.from(content).toString("UTF-8")
+                headers["content-type"] = "text/javascriptcharset=UTF-8";
+                body = Buffer.from(content).toString("UTF-8");
                 break;
             default:
 
@@ -76,7 +76,7 @@ export class FileSystem implements vscode.FileSystemProvider {
             body: body
         });
 
-        await this._processError(response)
+        await this._processError(response);
 
     }
 
@@ -86,21 +86,21 @@ export class FileSystem implements vscode.FileSystemProvider {
     async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
         const { hostname, pathname } = this._parseUri(oldUri);
 
-        const headers: any = await this._getHeaders(oldUri)
-        const oldBasePath = path.dirname(pathname)
-        const newPath = await this._parseUri(newUri).pathname
-        const newFilename = path.basename(newPath)
+        const headers: any = await this._getHeaders(oldUri);
+        const oldBasePath = path.dirname(pathname);
+        const newPath = await this._parseUri(newUri).pathname;
+        const newFilename = path.basename(newPath);
 
         // if path not equal, need workaround to move file
 
-        headers["Content-Type"] = "application/json;charset=UTF-8"
+        headers["Content-Type"] = "application/json;charset=UTF-8";
 
-        headers["X-Create-Options"] = "move,no-overwrite"
+        headers["X-Create-Options"] = "move,no-overwrite";
 
         const payload = {
             Location: `/sap/hana/xs/dt/base/file${pathname}`,
             Target: newFilename
-        }
+        };
 
         const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file${oldBasePath}/`, {
             method: "POST",
@@ -108,34 +108,34 @@ export class FileSystem implements vscode.FileSystemProvider {
             body: JSON.stringify(payload)
         });
 
-        await this._processError(response)
+        await this._processError(response);
 
     }
 
     async delete(uri: vscode.Uri): Promise<void> {
         const { hostname, pathname } = this._parseUri(uri);
 
-        let headers: any = await this._getHeaders(uri)
+        let headers: any = await this._getHeaders(uri);
 
         const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`, {
             method: "DELETE",
             headers,
         });
 
-        await this._processError(response)
+        await this._processError(response);
     }
 
     async createDirectory(uri: vscode.Uri): Promise<void> {
 
 
         const { hostname, pathname } = this._parseUri(uri);
-        const base = path.dirname(pathname)
-        const directoryName = path.basename(pathname)
+        const base = path.dirname(pathname);
+        const directoryName = path.basename(pathname);
 
         const payload = {
             Name: directoryName,
             Directory: true
-        }
+        };
 
         const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${base}`, {
             method: "POST",
@@ -143,14 +143,14 @@ export class FileSystem implements vscode.FileSystemProvider {
             body: JSON.stringify(payload)
         });
 
-        await this._processError(response)
+        await this._processError(response);
 
     }
 
     private credentials: Credentials = {};
 
     private async _findCredential(uri: vscode.Uri): Promise<Credential> {
-        const { hostname, username, password } = this._parseUri(uri)
+        const { hostname, username, password } = this._parseUri(uri);
 
         if (this.credentials[hostname]) {
             return this.credentials[hostname];
@@ -179,7 +179,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
             switch (response.status) {
                 case 404:
-                    throw vscode.FileSystemError.FileNotFound()
+                    throw vscode.FileSystemError.FileNotFound();
                 default:
                     // if require csrf token
                     const body = await response.text();
@@ -193,7 +193,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
     private async _getCsrfToken(uri: vscode.Uri, force: boolean = false) {
 
-        const { hostname } = this._parseUri(uri)
+        const { hostname } = this._parseUri(uri);
 
         const credential = await this._findCredential(uri);
 
@@ -262,9 +262,9 @@ export class FileSystem implements vscode.FileSystemProvider {
 
         await this._processError(response);
 
-        const body = await response.buffer()
+        const body = await response.buffer();
 
-        return body
+        return body;
     }
 
     private async _readDirectory(uri: vscode.Uri): Promise<DirectoryInformation> {
