@@ -60,6 +60,10 @@ export class FileSystem implements vscode.FileSystemProvider {
             case ".xsjs":
             case ".css":
             case ".html":
+            case ".json":
+            case ".xsjs":
+            case ".xsjslib":
+            case ".ts":
             case "": // start with .
                 headers["content-type"] = "text/javascriptcharset=UTF-8";
                 body = Buffer.from(content).toString("UTF-8");
@@ -70,7 +74,7 @@ export class FileSystem implements vscode.FileSystemProvider {
                 break;
         }
 
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`, {
+        const response = await this._request(uri, `https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`, {
             method: "PUT", // for put method, if file not exist, hana will create it.
             headers: headers,
             body: body
@@ -102,27 +106,29 @@ export class FileSystem implements vscode.FileSystemProvider {
             Target: newFilename
         };
 
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file${oldBasePath}/`, {
+        const response = await this._request(newUri, `https://${hostname}/sap/hana/xs/dt/base/file${oldBasePath}/`, {
             method: "POST",
             headers,
             body: JSON.stringify(payload)
         });
+
 
         await this._processError(response);
 
     }
 
     async delete(uri: vscode.Uri): Promise<void> {
+
         const { hostname, pathname } = this._parseUri(uri);
 
-        let headers: any = await this._getHeaders(uri);
-
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`, {
-            method: "DELETE",
-            headers,
-        });
+        const response = await this._request(
+            uri,
+            `https://${hostname}/sap/hana/xs/dt/base/file/${pathname}`,
+            { method: "DELETE" }
+        );
 
         await this._processError(response);
+
     }
 
     async createDirectory(uri: vscode.Uri): Promise<void> {
@@ -137,7 +143,7 @@ export class FileSystem implements vscode.FileSystemProvider {
             Directory: true
         };
 
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${base}`, {
+        const response = await this._request(uri, `https://${hostname}/sap/hana/xs/dt/base/file/${base}`, {
             method: "POST",
             headers: await this._getHeaders(uri),
             body: JSON.stringify(payload)
@@ -148,6 +154,38 @@ export class FileSystem implements vscode.FileSystemProvider {
     }
 
     private credentials: Credentials = {};
+
+    /**
+     * internal request wrapper
+     * 
+     * @param uri 
+     * @param url 
+     * @param init 
+     */
+    private async _request(
+        uri: vscode.Uri,
+        url: import("node-fetch").RequestInfo,
+        init: import("node-fetch").RequestInit = { method: "GET", headers: {} }
+    ): Promise<import("node-fetch").Response> {
+
+        init.headers = Object.assign(init.headers || {}, await this._getHeaders(uri));
+
+        const response = await fetch(url, init);
+
+        if (response.status === 403 && (response.headers.get("x-csrf-token") || "").toLowerCase() === "required") {
+
+            this._getCsrfToken(uri, true); // force refresh csrf token
+
+            init.headers = Object.assign(init.headers || {}, await this._getHeaders(uri));
+
+            return await fetch(url, init);
+
+        } else {
+
+            return response;
+
+        }
+    }
 
     private async _findCredential(uri: vscode.Uri): Promise<Credential> {
         const { hostname, username, password } = this._parseUri(uri);
@@ -200,25 +238,39 @@ export class FileSystem implements vscode.FileSystemProvider {
         if (force || !credential._csrfToken || credential._csrfToken === "unsafe") {
 
             const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file`,
-                { headers: { "x-csrf-token": "fetch" } }
+                {
+                    method: "GET", headers: {
+                        "x-csrf-token": "fetch",
+                        "Authorization": this._getAuthorizationHeader(credential),
+                    },
+                    redirect: "manual"
+                }
             );
 
-            await this._processError(response);
+            const newToken = response.headers.get("x-csrf-token");
 
-            credential._csrfToken = response.headers.get("x-csrf-token") || "";
-
+            if (newToken) {
+                credential._csrfToken = newToken || "";
+            } else {
+                await this._processError(response);
+            }
         }
 
-        return credential._csrfToken;
+        return credential._csrfToken || "fetch";
 
+    }
+
+    private _getAuthorizationHeader(credential: Credential): string {
+        return `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
     }
 
     private async _getHeaders(uri: vscode.Uri) {
         const credential = await this._findCredential(uri);
         const csrfToken = await this._getCsrfToken(uri);
+        const authHeader = this._getAuthorizationHeader(credential);
 
         return {
-            "Authorization": `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`,
+            "Authorization": authHeader,
             "x-csrf-token": csrfToken
         };
     }
@@ -228,12 +280,10 @@ export class FileSystem implements vscode.FileSystemProvider {
     }
 
     private async _readStat(uri: vscode.Uri): Promise<vscode.FileStat> {
+
         const { hostname, pathname } = this._parseUri(uri);
 
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?parts=meta`, {
-            headers: await this._getHeaders(uri)
-        });
-
+        const response = await this._request(uri, `https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?parts=meta`);
 
         await this._processError(response);
 
@@ -256,9 +306,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
         const { hostname, pathname } = this._parseUri(uri);
 
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`, {
-            headers: await this._getHeaders(uri)
-        });
+        const response = await this._request(uri, `https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`);
 
         await this._processError(response);
 
@@ -271,9 +319,7 @@ export class FileSystem implements vscode.FileSystemProvider {
 
         const { hostname, pathname } = this._parseUri(uri);
 
-        const response = await fetch(`https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`, {
-            headers: await this._getHeaders(uri)
-        });
+        const response = await this._request(uri, `https://${hostname}/sap/hana/xs/dt/base/file/${pathname}?depth=1`);
 
         await this._processError(response);
 
