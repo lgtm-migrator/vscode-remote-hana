@@ -2,6 +2,10 @@
 
 Start Hana XS JS Development in VS Code
 
+## Block
+
+* VSCode standard js/ts extension not support custom file system implementation
+
 ## Feature
 
 * [x] create/save file
