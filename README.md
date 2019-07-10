@@ -8,6 +8,12 @@ VSCode standard js/ts extension **NOT** support custom file system implementatio
 
 Caused by vscode builtin extension `typescript-language-features` use the local `typescript` module as server in another process, its hard to use the filesystem provider from vscode extension.
 
+## Resource URI
+
+```bash
+hanafs://user:password@tenant.hana.ondemand.com
+```
+
 ## Feature
 
 * [x] create/save file
